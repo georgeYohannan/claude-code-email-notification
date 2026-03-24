@@ -1,0 +1,39 @@
+{
+  "_comment": "Add or remove keywords per category. These are matched LOCALLY inside n8n — never sent to an LLM.",
+  "categories": {
+    "custody": {
+      "label": "Child Custody",
+      "keywords": ["custody", "visitation", "parenting plan", "parenting time", "guardian", "guardianship", "custodial", "non-custodial", "parental rights"]
+    },
+    "divorce": {
+      "label": "Divorce / Dissolution",
+      "keywords": ["divorce", "dissolution", "separation", "marital settlement", "spousal support", "alimony", "property division", "equitable distribution"]
+    },
+    "child_support": {
+      "label": "Child Support",
+      "keywords": ["child support", "support order", "support modification", "arrears", "wage garnishment", "support enforcement"]
+    },
+    "dv": {
+      "label": "Domestic Violence / Protective Orders",
+      "keywords": ["restraining order", "protective order", "domestic violence", "TRO", "injunction", "harassment", "stalking", "abuse"]
+    },
+    "adoption": {
+      "label": "Adoption",
+      "keywords": ["adoption", "termination of parental rights", "TPR", "finalization", "home study", "foster"]
+    },
+    "paternity": {
+      "label": "Paternity",
+      "keywords": ["paternity", "DNA test", "father's rights", "legitimation", "acknowledgment of paternity"]
+    },
+    "modification": {
+      "label": "Modification / Enforcement",
+      "keywords": ["modification", "motion to modify", "contempt", "enforcement", "violation", "order violation", "non-compliance"]
+    },
+    "urgent": {
+      "label": "URGENT",
+      "keywords": ["urgent", "emergency", "ASAP", "immediate", "expedited", "hearing tomorrow", "court tomorrow", "deadline today", "crisis"]
+    }
+  },
+  "case_reference_pattern": "(?:Case|Matter|File|Ref|Docket)[\\s#:.-]*([A-Z0-9-]{4,20})",
+  "_note_case_ref": "Regex to extract a case/matter reference number from the email subject or body. Adjust to match your firm's numbering format."
+}

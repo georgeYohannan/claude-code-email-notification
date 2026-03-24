@@ -1,0 +1,297 @@
+{
+  "name": "Family Law – Email Keyword Alert",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "hours", "hoursInterval": 1 }]
+        }
+      },
+      "id": "node-schedule",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "getAll",
+        "returnAll": false,
+        "limit": 50,
+        "filters": {
+          "q": "newer_than:1h",
+          "labelIds": ["INBOX"]
+        },
+        "options": {
+          "format": "full"
+        }
+      },
+      "id": "node-gmail",
+      "name": "Gmail – Fetch Last Hour",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [220, 300],
+      "credentials": {
+        "gmailOAuth2": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Gmail OAuth2" }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ╔══════════════════════════════════════════════════════════════════╗\n// ║  PRIVACY GUARDRAIL – LOCAL KEYWORD EXTRACTOR                    ║\n// ║  This node runs entirely inside n8n.                            ║\n// ║  Raw email bodies and personal data are NEVER forwarded         ║\n// ║  to any external LLM, API, or third-party service.              ║\n// ║  Only matched keyword categories + extracted case references    ║\n// ║  leave this node.                                               ║\n// ╚══════════════════════════════════════════════════════════════════╝\n\nconst KEYWORDS = {\n  custody:       ['custody','visitation','parenting plan','parenting time','guardian','guardianship','custodial','non-custodial','parental rights'],\n  divorce:       ['divorce','dissolution','separation','marital settlement','spousal support','alimony','property division','equitable distribution'],\n  child_support: ['child support','support order','support modification','arrears','wage garnishment','support enforcement'],\n  dv:            ['restraining order','protective order','domestic violence','tro','injunction','harassment','stalking','abuse'],\n  adoption:      ['adoption','termination of parental rights','tpr','finalization','home study','foster'],\n  paternity:     ['paternity','dna test','father\\'s rights','legitimation','acknowledgment of paternity'],\n  modification:  ['modification','motion to modify','contempt','enforcement','violation','order violation','non-compliance'],\n  urgent:        ['urgent','emergency','asap','immediate','expedited','hearing tomorrow','court tomorrow','deadline today','crisis']\n};\n\n// Regex to extract a case/matter reference number from subject or snippet\n// Adjust to your firm's numbering format (e.g. \"Case 2024-FL-0042\")\nconst CASE_REF_RE = /(?:Case|Matter|File|Ref|Docket)[\\s#:.\\-]*([A-Z0-9\\-]{4,20})/i;\n\n// PII patterns to STRIP before any further processing\nconst PII_PATTERNS = [\n  /\\b[A-Z][a-z]+ [A-Z][a-z]+\\b/g,          // Full names (basic heuristic)\n  /\\b[\\w.+-]+@[\\w-]+\\.[a-z]{2,}\\b/gi,       // Email addresses\n  /\\b(?:\\+?1[\\s.-]?)?\\(?\\d{3}\\)?[\\s.-]?\\d{3}[\\s.-]?\\d{4}\\b/g, // Phone numbers\n  /\\b\\d{3}-\\d{2}-\\d{4}\\b/g,                // SSN\n  /\\b\\d{1,5}\\s+[\\w\\s]+(?:St|Ave|Rd|Blvd|Dr|Ct|Ln|Way|Pl)\\b/gi // Street addresses\n];\n\nfunction stripPII(text) {\n  let clean = text;\n  for (const re of PII_PATTERNS) clean = clean.replace(re, '[REDACTED]');\n  return clean;\n}\n\nfunction extractKeywords(text) {\n  const lower = text.toLowerCase();\n  const matched = {};\n  for (const [cat, kws] of Object.entries(KEYWORDS)) {\n    const hits = kws.filter(kw => lower.includes(kw));\n    if (hits.length) matched[cat] = hits;\n  }\n  return matched;\n}\n\nconst results = [];\n\nfor (const item of $input.all()) {\n  const msg = item.json;\n\n  // ── Pull only the fields we need ──────────────────────────────────\n  const subject  = msg.subject   || '';\n  const snippet  = msg.snippet   || '';   // Gmail short preview (< 200 chars)\n  const from     = msg.from      || '';\n  const date     = msg.date      || msg.internalDate || '';\n  const msgId    = msg.id        || '';\n  const threadId = msg.threadId  || '';\n\n  // ── Combine subject + snippet for matching (NOT the full body) ────\n  // Snippet is safe: it's already truncated by Gmail and contains no\n  // more context than a push-notification preview.\n  const searchText = `${subject} ${snippet}`;\n\n  // ── Extract case reference BEFORE stripping PII ───────────────────\n  const caseRefMatch = CASE_REF_RE.exec(searchText);\n  const caseRef = caseRefMatch ? caseRefMatch[1].trim() : null;\n\n  // ── Match keywords ────────────────────────────────────────────────\n  const matched = extractKeywords(searchText);\n  if (Object.keys(matched).length === 0) continue; // skip unrelated emails\n\n  // ── Strip PII from what we forward ───────────────────────────────\n  const safeSubject = stripPII(subject);\n  const senderDomain = from.includes('@') ? '@' + from.split('@')[1].replace(/>.*/, '').trim() : '[unknown]';\n\n  results.push({\n    json: {\n      // ── Safe metadata only ──\n      emailId:      msgId,\n      threadId:     threadId,\n      receivedAt:   date,\n      senderDomain: senderDomain,          // domain only, no name/address\n      safeSubject:  safeSubject,           // PII-stripped subject\n      // ── Extracted intelligence ──\n      caseRef:        caseRef,             // e.g. \"2024-FL-0042\" or null\n      matchedCategories: Object.keys(matched),\n      matchedKeywords:   matched,\n      isUrgent:       !!matched.urgent\n    }\n  });\n}\n\nreturn results;\n"
+      },
+      "id": "node-privacy-filter",
+      "name": "Privacy Filter & Keyword Extractor",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false },
+          "conditions": [
+            {
+              "id": "has-keywords",
+              "leftValue": "={{ $json.matchedCategories.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-keywords",
+      "name": "Any Keywords Matched?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.MYCASE_BASE_URL }}/cases",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "search",
+              "value": "={{ $json.caseRef || $json.matchedCategories[0] }}"
+            },
+            { "name": "per_page", "value": "5" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Token token={{ $env.MYCASE_API_TOKEN }}"
+            },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "node-mycase-search",
+      "name": "myCase – Search Cases",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [940, 220]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "case-found",
+              "leftValue": "={{ $json.cases?.length ?? 0 }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-case",
+      "name": "Case Found in myCase?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1180, 220]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.MYCASE_BASE_URL }}/cases/{{ $json.cases[0].id }}/case_team_memberships",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Token token={{ $env.MYCASE_API_TOKEN }}"
+            }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "node-mycase-staff",
+      "name": "myCase – Get Case Staff",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1420, 140]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build a unified notification payload from myCase staff data.\n// Loads routing config to determine Slack/Telegram targets per role.\n\nconst ROUTING = {\n  'Lead Attorney': { notify_via: ['slack', 'telegram'] },\n  'Paralegal':     { notify_via: ['slack'] }\n};\n\nconst staffList = $input.first().json.case_team_memberships || [];\n\n// Find lead attorney and paralegal\nconst attorney   = staffList.find(m => m.role === 'Lead Attorney');\nconst paralegal  = staffList.find(m => m.role === 'Paralegal');\n\n// Pull the keyword/case data from a few nodes back\nconst kwData = $('Privacy Filter & Keyword Extractor').first().json;\nconst caseData = $('myCase – Search Cases').first().json.cases?.[0] || {};\n\nconst recipients = [];\nfor (const member of [attorney, paralegal].filter(Boolean)) {\n  const routing = ROUTING[member.role] || { notify_via: ['slack'] };\n  recipients.push({\n    name:         member.user?.name || member.role,\n    role:         member.role,\n    notify_via:   routing.notify_via,\n    slack_user_id:    member.user?.slack_user_id    || null,\n    telegram_chat_id: member.user?.telegram_chat_id || null\n  });\n}\n\nconst categories = kwData.matchedCategories.join(', ');\nconst urgencyTag = kwData.isUrgent ? '🚨 URGENT – ' : '';\nconst caseLabel  = caseData.display_number || kwData.caseRef || 'Unknown case';\n\nconst message = [\n  `${urgencyTag}New email may relate to *${caseLabel}*`,\n  `Category: ${categories}`,\n  `Received: ${kwData.receivedAt}`,\n  `Sender domain: ${kwData.senderDomain}`,\n  `Subject (PII-stripped): ${kwData.safeSubject}`\n].join('\\n');\n\nreturn recipients.map(r => ({\n  json: { ...r, message, caseLabel, isUrgent: kwData.isUrgent }\n}));\n"
+      },
+      "id": "node-build-payload",
+      "name": "Build Notification Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1660, 140]
+    },
+    {
+      "parameters": {
+        "jsCode": "// No case found in myCase — build a fallback notification to the default channel.\nconst kwData = $('Privacy Filter & Keyword Extractor').first().json;\nconst categories = kwData.matchedCategories.join(', ');\nconst urgencyTag = kwData.isUrgent ? '🚨 URGENT – ' : '';\n\nconst message = [\n  `${urgencyTag}Email matched keywords but *no matching case found* in myCase.`,\n  `Category: ${categories}`,\n  `Case ref in email: ${kwData.caseRef || 'None detected'}`,\n  `Sender domain: ${kwData.senderDomain}`,\n  `Subject (PII-stripped): ${kwData.safeSubject}`,\n  `Please review and assign manually.`\n].join('\\n');\n\nreturn [{\n  json: {\n    notify_via: ['slack'],\n    slack_user_id: null,\n    slack_channel_fallback: true,\n    message,\n    isUrgent: kwData.isUrgent\n  }\n}];\n"
+      },
+      "id": "node-no-case-payload",
+      "name": "Fallback – No Case Found",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1420, 320]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "needs-slack",
+              "leftValue": "={{ $json.notify_via.includes('slack') }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-slack",
+      "name": "Send via Slack?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1900, 140]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "post",
+        "channel": "={{ $json.slack_user_id ?? $env.SLACK_FALLBACK_CHANNEL }}",
+        "text": "={{ $json.message }}",
+        "otherOptions": {}
+      },
+      "id": "node-slack",
+      "name": "Slack – Send DM / Channel",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.2,
+      "position": [2140, 80],
+      "credentials": {
+        "slackApi": { "id": "REPLACE_WITH_CREDENTIAL_ID", "name": "Slack Bot Token" }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "needs-telegram",
+              "leftValue": "={{ $json.notify_via.includes('telegram') && $json.telegram_chat_id != null }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "equals" }
+            }
+          ]
+        }
+      },
+      "id": "node-if-telegram",
+      "name": "Send via Telegram?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1900, 280]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN }}/sendMessage",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "chat_id": "={{ $json.telegram_chat_id }}",
+          "text": "={{ $json.message }}",
+          "parse_mode": "Markdown"
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "node-telegram",
+      "name": "Telegram – Send Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2140, 280]
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [[{ "node": "Gmail – Fetch Last Hour", "type": "main", "index": 0 }]]
+    },
+    "Gmail – Fetch Last Hour": {
+      "main": [[{ "node": "Privacy Filter & Keyword Extractor", "type": "main", "index": 0 }]]
+    },
+    "Privacy Filter & Keyword Extractor": {
+      "main": [[{ "node": "Any Keywords Matched?", "type": "main", "index": 0 }]]
+    },
+    "Any Keywords Matched?": {
+      "main": [
+        [{ "node": "myCase – Search Cases", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "myCase – Search Cases": {
+      "main": [[{ "node": "Case Found in myCase?", "type": "main", "index": 0 }]]
+    },
+    "Case Found in myCase?": {
+      "main": [
+        [{ "node": "myCase – Get Case Staff", "type": "main", "index": 0 }],
+        [{ "node": "Fallback – No Case Found", "type": "main", "index": 0 }]
+      ]
+    },
+    "myCase – Get Case Staff": {
+      "main": [[{ "node": "Build Notification Payload", "type": "main", "index": 0 }]]
+    },
+    "Build Notification Payload": {
+      "main": [[{ "node": "Send via Slack?", "type": "main", "index": 0 }]]
+    },
+    "Fallback – No Case Found": {
+      "main": [[{ "node": "Send via Slack?", "type": "main", "index": 0 }]]
+    },
+    "Send via Slack?": {
+      "main": [
+        [{ "node": "Slack – Send DM / Channel", "type": "main", "index": 0 }],
+        [{ "node": "Send via Telegram?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Slack – Send DM / Channel": {
+      "main": [[{ "node": "Send via Telegram?", "type": "main", "index": 0 }]]
+    },
+    "Send via Telegram?": {
+      "main": [
+        [{ "node": "Telegram – Send Message", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "last",
+    "errorWorkflow": ""
+  },
+  "staticData": null,
+  "meta": {
+    "instanceId": "family-law-email-alert"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "_comment": "Controls how notifications are routed per staff member. Fill in real IDs before importing the workflow.",
+  "default_channel": {
+    "slack_channel_id": "C0000000000",
+    "_slack_note": "Fallback Slack channel if no staff match is found (e.g. #case-alerts)"
+  },
+  "staff": [
+    {
+      "mycase_role": "Lead Attorney",
+      "notify_via": ["slack", "telegram"],
+      "slack_user_id": "U0000000001",
+      "telegram_chat_id": "100000001",
+      "_example_name": "Attorney A"
+    },
+    {
+      "mycase_role": "Paralegal",
+      "notify_via": ["slack"],
+      "slack_user_id": "U0000000002",
+      "telegram_chat_id": null,
+      "_example_name": "Paralegal B"
+    }
+  ],
+  "urgency_overrides": {
+    "_comment": "If the URGENT category is matched, also ping these extra channels/people.",
+    "also_notify_slack_channel": "C0000000099",
+    "_slack_note": "#urgent-alerts"
+  }
+}
