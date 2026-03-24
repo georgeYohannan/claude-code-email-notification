@@ -1,5 +1,5 @@
 {
-  "_comment": "Keyword categories matched LOCALLY inside n8n — never sent to an LLM.",
+  "_comment": "All matching is case-insensitive. Keywords are stored lowercase for readability but will match any casing in emails.",
   "categories": {
     "emergency": {
       "label": "Emergency",
@@ -15,16 +15,16 @@
         "due today",
         "response needed",
         "please respond",
-        "DVRO",
-        "RFO",
-        "Request for Order",
-        "Electronic Service"
+        "dvro",
+        "rfo",
+        "request for order",
+        "electronic service"
       ]
     },
     "filing_service": {
       "label": "Filing / Service",
       "keywords": [
-        "DVRO",
+        "dvro",
         "restraining order",
         "declaration",
         "meet and confer",
@@ -32,8 +32,8 @@
         "stipulation",
         "settlement",
         "mediation",
-        "RFO",
-        "Request for Order"
+        "rfo",
+        "request for order"
       ]
     },
     "discovery": {
@@ -42,7 +42,7 @@
         "discovery",
         "interrogatories",
         "request for production",
-        "Demand for production",
+        "demand for production",
         "responses",
         "verified responses",
         "meet and confer",
@@ -55,7 +55,7 @@
     "action_request": {
       "label": "Action Request",
       "keywords": [
-        "Please review",
+        "please review",
         "please confirm",
         "please advise",
         "please provide",
