@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 # ── Configure your folders here ──────────────────────────────────────────────
 INPUT_FOLDER  = Path("~/Downloads/jfl/in").expanduser()
@@ -29,7 +30,7 @@ LIBREOFFICE_PATHS = [
 WORD_APP_PATH = Path("/Applications/Microsoft Word.app")
 
 
-def find_libreoffice() -> str | None:
+def find_libreoffice() -> Optional[str]:
     for path in LIBREOFFICE_PATHS:
         if Path(path).exists():
             return path
@@ -85,7 +86,7 @@ def convert_with_docx2pdf(doc_path: Path) -> bool:
     return True
 
 
-def convert_and_move(doc_path: Path, backend: str, lo_bin: str | None) -> bool:
+def convert_and_move(doc_path: Path, backend: str, lo_bin: Optional[str]) -> bool:
     """Convert a .doc/.docx file to PDF and save it in OUTPUT_FOLDER."""
     pdf_dest = OUTPUT_FOLDER / (doc_path.stem + ".pdf")
 
