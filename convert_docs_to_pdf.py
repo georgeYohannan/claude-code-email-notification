@@ -3,27 +3,20 @@
 Convert all .doc and .docx files in INPUT_FOLDER to PDF and move them
 to OUTPUT_FOLDER. Existing .pdf files in INPUT_FOLDER are also moved
 to OUTPUT_FOLDER. End result: OUTPUT_FOLDER contains only PDFs.
-Uses LibreOffice headless for conversion.
+
+Requires: pip install docx2pdf
+  - On macOS: uses Microsoft Word (must be installed) via AppleScript
+  - On Linux: uses LibreOffice (must be installed)
 """
 
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
-
-def find_libreoffice() -> str:
-    """Return the LibreOffice executable path, checking common macOS and Linux locations."""
-    candidates = [
-        "/Applications/LibreOffice.app/Contents/MacOS/soffice",  # macOS
-        "/usr/bin/libreoffice",                                   # Linux
-        "/usr/bin/soffice",                                       # Linux alt
-        "/usr/local/bin/libreoffice",                             # Linux local
-    ]
-    for path in candidates:
-        if Path(path).exists():
-            return path
-    print("Error: LibreOffice not found. Please install it from https://www.libreoffice.org/")
+try:
+    from docx2pdf import convert
+except ImportError:
+    print("Error: docx2pdf is not installed. Run: pip install docx2pdf")
     sys.exit(1)
 
 # ── Configure your folders here ──────────────────────────────────────────────
@@ -32,8 +25,8 @@ OUTPUT_FOLDER = Path("~/Downloads/jfl/out").expanduser()
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def convert_and_move(doc_path: Path, libreoffice: str) -> bool:
-    """Convert a .doc/.docx file to PDF and move it to OUTPUT_FOLDER."""
+def convert_and_move(doc_path: Path) -> bool:
+    """Convert a .doc/.docx file to PDF and save it in OUTPUT_FOLDER."""
     pdf_dest = OUTPUT_FOLDER / (doc_path.stem + ".pdf")
 
     if pdf_dest.exists():
@@ -41,21 +34,10 @@ def convert_and_move(doc_path: Path, libreoffice: str) -> bool:
         return False
 
     print(f"  [CONVERTING] {doc_path.name}")
-    result = subprocess.run(
-        [
-            libreoffice,
-            "--headless",
-            "--convert-to", "pdf",
-            str(doc_path),
-            "--outdir", str(OUTPUT_FOLDER),
-        ],
-        capture_output=True,
-        text=True,
-    )
-
-    if result.returncode != 0:
-        print(f"  [ERROR] Failed to convert {doc_path.name}")
-        print(f"          {result.stderr.strip()}")
+    try:
+        convert(str(doc_path), str(pdf_dest))
+    except Exception as e:
+        print(f"  [ERROR] Failed to convert {doc_path.name}: {e}")
         return False
 
     print(f"  [DONE] -> {pdf_dest.name}")
@@ -82,20 +64,18 @@ def main():
     doc_files = sorted(INPUT_FOLDER.rglob("*.doc")) + sorted(INPUT_FOLDER.rglob("*.docx"))
     pdf_files = sorted(INPUT_FOLDER.rglob("*.pdf"))
 
-    total = len(doc_files) + len(pdf_files)
-    if total == 0:
+    if not doc_files and not pdf_files:
         print("No .doc, .docx, or .pdf files found in input folder.")
         return
 
     print(f"Found {len(doc_files)} Word file(s) and {len(pdf_files)} PDF file(s).\n")
 
-    libreoffice = find_libreoffice()
     converted = skipped = failed = moved = 0
 
     if doc_files:
         print("--- Converting Word documents ---")
         for doc_path in doc_files:
-            ok = convert_and_move(doc_path, libreoffice)
+            ok = convert_and_move(doc_path)
             if ok:
                 converted += 1
             else:
