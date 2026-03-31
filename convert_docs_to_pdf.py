@@ -1,130 +1,106 @@
 #!/usr/bin/env python3
 """
-Convert all .doc and .docx files in a folder (recursively) to PDF.
-Skips files that already have a corresponding PDF.
+Convert all .doc and .docx files in INPUT_FOLDER to PDF and move them
+to OUTPUT_FOLDER. Existing .pdf files in INPUT_FOLDER are also moved
+to OUTPUT_FOLDER. End result: OUTPUT_FOLDER contains only PDFs.
 Uses LibreOffice headless for conversion.
 """
 
-import argparse
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+# ── Configure your folders here ──────────────────────────────────────────────
+INPUT_FOLDER  = Path("/path/to/your/input_folder")
+OUTPUT_FOLDER = Path("/path/to/your/output_folder")
+# ─────────────────────────────────────────────────────────────────────────────
 
-def convert_to_pdf(doc_path: Path, output_dir: Path) -> bool:
-    """Convert a single .doc/.docx file to PDF using LibreOffice."""
-    pdf_path = output_dir / (doc_path.stem + ".pdf")
 
-    if pdf_path.exists():
-        print(f"  [SKIP] PDF already exists: {pdf_path}")
+def convert_and_move(doc_path: Path) -> bool:
+    """Convert a .doc/.docx file to PDF and move it to OUTPUT_FOLDER."""
+    pdf_dest = OUTPUT_FOLDER / (doc_path.stem + ".pdf")
+
+    if pdf_dest.exists():
+        print(f"  [SKIP] PDF already exists in output: {pdf_dest.name}")
         return False
 
-    print(f"  [CONVERTING] {doc_path} -> {pdf_path}")
+    print(f"  [CONVERTING] {doc_path.name}")
     result = subprocess.run(
         [
             "libreoffice",
             "--headless",
             "--convert-to", "pdf",
             str(doc_path),
-            "--outdir", str(output_dir),
+            "--outdir", str(OUTPUT_FOLDER),
         ],
         capture_output=True,
         text=True,
     )
 
     if result.returncode != 0:
-        print(f"  [ERROR] Failed to convert {doc_path}")
+        print(f"  [ERROR] Failed to convert {doc_path.name}")
         print(f"          {result.stderr.strip()}")
         return False
 
-    print(f"  [DONE] {pdf_path.name}")
+    print(f"  [DONE] -> {pdf_dest.name}")
     return True
 
 
-def process_folder(folder: Path, same_dir: bool) -> None:
-    """Walk folder recursively and convert all .doc/.docx files."""
-    doc_files = list(folder.rglob("*.doc")) + list(folder.rglob("*.docx"))
-
-    if not doc_files:
-        print("No .doc or .docx files found.")
+def move_pdf(pdf_path: Path) -> None:
+    """Move an existing .pdf file to OUTPUT_FOLDER."""
+    dest = OUTPUT_FOLDER / pdf_path.name
+    if dest.exists():
+        print(f"  [SKIP] Already in output: {pdf_path.name}")
         return
-
-    print(f"Found {len(doc_files)} file(s) to process.\n")
-
-    converted = 0
-    skipped = 0
-    failed = 0
-
-    for doc_path in sorted(doc_files):
-        output_dir = doc_path.parent if same_dir else folder
-        result = convert_to_pdf(doc_path, output_dir)
-        if result is True:
-            converted += 1
-        elif result is False:
-            # Distinguish skip vs error by checking if pdf now exists
-            pdf_path = output_dir / (doc_path.stem + ".pdf")
-            if pdf_path.exists():
-                skipped += 1 if not result else converted
-            else:
-                failed += 1
-
-    print(f"\nDone. Converted: {converted} | Skipped: {skipped} | Failed: {failed}")
+    shutil.move(str(pdf_path), str(dest))
+    print(f"  [MOVED] {pdf_path.name} -> output folder")
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Convert .doc/.docx files to PDF using LibreOffice."
-    )
-    parser.add_argument(
-        "folder",
-        type=Path,
-        help="Path to the folder containing documents",
-    )
-    parser.add_argument(
-        "--same-dir",
-        action="store_true",
-        default=True,
-        help="Save each PDF in the same directory as its source file (default: true)",
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=None,
-        help="Save all PDFs to a specific output directory instead",
-    )
-    args = parser.parse_args()
-
-    folder = args.folder.resolve()
-    if not folder.is_dir():
-        print(f"Error: '{folder}' is not a valid directory.")
+    if not INPUT_FOLDER.is_dir():
+        print(f"Error: INPUT_FOLDER '{INPUT_FOLDER}' does not exist or is not a directory.")
         sys.exit(1)
 
-    # If explicit output dir is given, use that; otherwise save alongside source
-    if args.output_dir:
-        args.output_dir.mkdir(parents=True, exist_ok=True)
-        same_dir = False
+    OUTPUT_FOLDER.mkdir(parents=True, exist_ok=True)
 
-        # Override process_folder to use fixed output dir
-        doc_files = list(folder.rglob("*.doc")) + list(folder.rglob("*.docx"))
-        if not doc_files:
-            print("No .doc or .docx files found.")
-            return
+    doc_files = sorted(INPUT_FOLDER.rglob("*.doc")) + sorted(INPUT_FOLDER.rglob("*.docx"))
+    pdf_files = sorted(INPUT_FOLDER.rglob("*.pdf"))
 
-        print(f"Found {len(doc_files)} file(s) to process.\n")
-        converted = skipped = failed = 0
-        for doc_path in sorted(doc_files):
-            ok = convert_to_pdf(doc_path, args.output_dir)
+    total = len(doc_files) + len(pdf_files)
+    if total == 0:
+        print("No .doc, .docx, or .pdf files found in input folder.")
+        return
+
+    print(f"Found {len(doc_files)} Word file(s) and {len(pdf_files)} PDF file(s).\n")
+
+    converted = skipped = failed = moved = 0
+
+    if doc_files:
+        print("--- Converting Word documents ---")
+        for doc_path in doc_files:
+            ok = convert_and_move(doc_path)
             if ok:
                 converted += 1
             else:
-                pdf_path = args.output_dir / (doc_path.stem + ".pdf")
-                if pdf_path.exists():
+                pdf_dest = OUTPUT_FOLDER / (doc_path.stem + ".pdf")
+                if pdf_dest.exists():
                     skipped += 1
                 else:
                     failed += 1
-        print(f"\nDone. Converted: {converted} | Skipped: {skipped} | Failed: {failed}")
-    else:
-        process_folder(folder, same_dir=True)
+
+    if pdf_files:
+        print("\n--- Moving existing PDFs ---")
+        for pdf_path in pdf_files:
+            move_pdf(pdf_path)
+            moved += 1
+
+    print(f"\nDone.")
+    print(f"  Converted : {converted}")
+    print(f"  Skipped   : {skipped}")
+    print(f"  Failed    : {failed}")
+    print(f"  PDFs moved: {moved}")
+    print(f"\nAll PDFs are in: {OUTPUT_FOLDER}")
 
 
 if __name__ == "__main__":
