@@ -11,13 +11,28 @@ import subprocess
 import sys
 from pathlib import Path
 
+
+def find_libreoffice() -> str:
+    """Return the LibreOffice executable path, checking common macOS and Linux locations."""
+    candidates = [
+        "/Applications/LibreOffice.app/Contents/MacOS/soffice",  # macOS
+        "/usr/bin/libreoffice",                                   # Linux
+        "/usr/bin/soffice",                                       # Linux alt
+        "/usr/local/bin/libreoffice",                             # Linux local
+    ]
+    for path in candidates:
+        if Path(path).exists():
+            return path
+    print("Error: LibreOffice not found. Please install it from https://www.libreoffice.org/")
+    sys.exit(1)
+
 # ── Configure your folders here ──────────────────────────────────────────────
 INPUT_FOLDER  = Path("~/Downloads/jfl/in").expanduser()
 OUTPUT_FOLDER = Path("~/Downloads/jfl/out").expanduser()
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def convert_and_move(doc_path: Path) -> bool:
+def convert_and_move(doc_path: Path, libreoffice: str) -> bool:
     """Convert a .doc/.docx file to PDF and move it to OUTPUT_FOLDER."""
     pdf_dest = OUTPUT_FOLDER / (doc_path.stem + ".pdf")
 
@@ -28,7 +43,7 @@ def convert_and_move(doc_path: Path) -> bool:
     print(f"  [CONVERTING] {doc_path.name}")
     result = subprocess.run(
         [
-            "libreoffice",
+            libreoffice,
             "--headless",
             "--convert-to", "pdf",
             str(doc_path),
@@ -74,12 +89,13 @@ def main():
 
     print(f"Found {len(doc_files)} Word file(s) and {len(pdf_files)} PDF file(s).\n")
 
+    libreoffice = find_libreoffice()
     converted = skipped = failed = moved = 0
 
     if doc_files:
         print("--- Converting Word documents ---")
         for doc_path in doc_files:
-            ok = convert_and_move(doc_path)
+            ok = convert_and_move(doc_path, libreoffice)
             if ok:
                 converted += 1
             else:
