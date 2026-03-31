@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 # ── Configure your folders here ──────────────────────────────────────────────
-INPUT_FOLDER  = Path("/path/to/your/input_folder")
-OUTPUT_FOLDER = Path("/path/to/your/output_folder")
+INPUT_FOLDER  = Path("~/Downloads/jfl/in").expanduser()
+OUTPUT_FOLDER = Path("~/Downloads/jfl/out").expanduser()
 # ─────────────────────────────────────────────────────────────────────────────
 
 
